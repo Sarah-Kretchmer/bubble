@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Soapy Iridescent Bubble</title>
+  <style>
+    body { margin:0; height:100vh; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  </style>
+</head>
+<body>
+  <canvas id="c" width="800" height="800"></canvas>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script>
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+    const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true });
+    renderer.setSize(800, 800);
+
+    const uniforms = {
+      iTime: { value: 0 },
+      iResolution: { value: new THREE.Vector2(700, 700) },
+      iChannel0: { value: null }
+    };
+
+    const material = new THREE.ShaderMaterial({
+      uniforms: uniforms,
+      transparent: true,
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        precision highp float;
+        varying vec2 vUv;
+        uniform float iTime;
+        uniform vec2 iResolution;
+
+        #define MINDIST 0.001
+
+        vec3 iridescent(float ramp_p) {
+          ramp_p = fract(ramp_p);
+          vec3 col0, col1;
+          if(ramp_p < 0.05) {col0=vec3(0.33,0.49,0.50); col1=vec3(0.27,0.33,0.48);}
+          else if(ramp_p < 0.1) {col0=vec3(0.27,0.33,0.48); col1=vec3(0.74,0.77,0.81);}
+          else if(ramp_p < 0.15) {col0=vec3(0.74,0.77,0.81); col1=vec3(0.81,0.58,0.21);}
+          else if(ramp_p < 0.2) {col0=vec3(0.81,0.58,0.21); col1=vec3(0.37,0.44,0.13);}
+          else if(ramp_p < 0.25) {col0=vec3(0.37,0.44,0.13); col1=vec3(0.0,0.18,0.72);}
+          else if(ramp_p < 0.3) {col0=vec3(0.0,0.18,0.72); col1=vec3(0.27,0.74,0.59);}
+          else if(ramp_p < 0.35) {col0=vec3(0.27,0.74,0.59); col1=vec3(0.87,0.67,0.16);}
+          else if(ramp_p < 0.4) {col0=vec3(0.87,0.67,0.16); col1=vec3(0.89,0.12,0.43);}
+          else if(ramp_p < 0.45) {col0=vec3(0.89,0.12,0.43); col1=vec3(0.11,0.13,0.80);}
+          else if(ramp_p < 0.5) {col0=vec3(0.11,0.13,0.80); col1=vec3(0.0,0.60,0.28);}
+          else if(ramp_p < 0.55) {col0=vec3(0.0,0.60,0.28); col1=vec3(0.55,0.68,0.15);}
+          else if(ramp_p < 0.6) {col0=vec3(0.55,0.68,0.15); col1=vec3(1.0,0.24,0.62);}
+          else if(ramp_p < 0.65) {col0=vec3(1.0,0.24,0.62); col1=vec3(0.53,0.15,0.59);}
+          else if(ramp_p < 0.7) {col0=vec3(0.53,0.15,0.59); col1=vec3(0.0,0.48,0.21);}
+          else if(ramp_p < 0.75) {col0=vec3(0.0,0.48,0.21); col1=vec3(0.18,0.62,0.38);}
+          else if(ramp_p < 0.8) {col0=vec3(0.18,0.62,0.38); col1=vec3(0.80,0.37,0.59);}
+          else if(ramp_p < 0.85) {col0=vec3(0.80,0.37,0.59); col1=vec3(0.77,0.23,0.39);}
+          else if(ramp_p < 0.9) {col0=vec3(0.77,0.23,0.39); col1=vec3(0.27,0.38,0.32);}
+          else if(ramp_p < 0.95) {col0=vec3(0.27,0.38,0.32); col1=vec3(0.10,0.53,0.50);}
+          else {col0=vec3(0.10,0.53,0.50); col1=vec3(0.33,0.49,0.50);}
+
+          float bias = fract(ramp_p * 20.0);
+vec3 col = mix(col0, col1, bias);
+return pow(col, vec3(0.8));
+        }
+
+        float hash(float n) { return fract(sin(n)*753.5453123); }
+
+        float noise(vec3 x) {
+          vec3 p = floor(x);
+          vec3 f = fract(x);
+          f = f*f*(3.0-2.0*f);
+          float n = p.x + p.y*157.0 + 113.0*p.z;
+          return mix(mix(mix(hash(n+0.0),hash(n+1.0),f.x),
+                         mix(hash(n+157.0),hash(n+158.0),f.x),f.y),
+                     mix(mix(hash(n+113.0),hash(n+114.0),f.x),
+                         mix(hash(n+270.0),hash(n+271.0),f.x),f.y),f.z);
+        }
+
+        float distfield(vec3 pos) {
+          return length(pos) - 1.125 + noise((pos + vec3(0.0, 0.0, iTime/3.0)) * 2.0) * 0.153;
+        }
+
+        vec3 soap_p(vec3 p) {
+          p *= 2.1276764;
+          float ct = iTime;
+          for(int i=1; i<20; i++) {
+            vec3 newp = p;
+            newp.x += 0.15/float(i) * cos(float(i)*p.y + ct*0.3 + 0.23*float(i)) - 432.6;
+            newp.y += 0.15/float(i) * sin(float(i)*p.x + ct*0.7 + 0.23*float(i-66)) + 64.66;
+            newp.z += 0.15/float(i) * cos(float(i)*p.x - p.y + ct*1.3 + 0.23*float(i+6)) - 56.0;
+            p = newp;
+          }
+          vec3 col = vec3(0.5*sin(1.0*p.x)+0.5, 0.5*sin(1.0*p.y)+0.5, 1.0*sin(0.8*p.z)+0.5);
+          return vec3( (col.x + col.y + col.z) / 3.0 );
+        }
+
+        void main() {
+          vec2 uv = -1.0 + 2.0 * vUv;
+          uv.x *= iResolution.x / iResolution.y;
+
+          vec3 ro = vec3(0.0, 0.0, 1.6);
+          vec3 rd = normalize(vec3(uv.x, -uv.y, -1.0));
+
+          float t = 0.0;
+          float d = MINDIST;
+          vec3 p = ro;
+          for(int i=0; i<200; i++) {
+            if(d < MINDIST || t > 50.0) break;
+            d = distfield(p);
+            t += d;
+            p += d * rd;
+          }
+
+          vec3 col = vec3(0.018);
+
+          if(d < MINDIST) {
+            vec2 eps = vec2(MINDIST, -MINDIST);
+            vec3 n = normalize(
+              eps.xyy * distfield(p + eps.xyy) +
+              eps.yyx * distfield(p + eps.yyx) +
+              eps.yxy * distfield(p + eps.yxy) +
+              eps.xxx * distfield(p + eps.xxx)
+            );
+
+            vec3 I = normalize(ro - p);
+            float fresnel = 1.0 - dot(n, I);
+            fresnel = pow(fresnel, 3.00);
+            float alpha = fresnel;
+            fresnel = fresnel + 0.075 * (1.0 - fresnel);
+
+            vec3 soap = soap_p(p);
+            soap = iridescent(soap.x + iTime * 0.1);
+            soap = pow(fresnel, 0.85) * pow(soap, vec3(0.985));
+
+            col = soap + fresnel * 0.5;
+            gl_FragColor = vec4(col, alpha);
+            return;
+          }
+
+          gl_FragColor = vec4(col, 0.0);
+        }
+      `
+    });
+
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+    scene.add(quad);
+
+    let startTime = Date.now();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      uniforms.iTime.value = (Date.now() - startTime) * 0.0005;
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
